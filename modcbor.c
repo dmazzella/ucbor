@@ -439,7 +439,6 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
         }
         else
         {
-            printf("else err: %d\n", err);
             if (buf != NULL)
             {
                 m_free(buf);
@@ -466,7 +465,6 @@ STATIC mp_obj_t cbor_dumps(mp_obj_t x_obj)
 
     if (buf == NULL)
     {
-        printf("ebuf == NULL\n");
         mp_raise_ValueError("CBOR encoding failed");
     }
 
