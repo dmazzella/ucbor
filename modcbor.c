@@ -79,7 +79,9 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             size_t n;
             err = cbor_value_dup_byte_string(it, &buf, &n, it);
             if (err)
+            {
                 mp_raise_ValueError("parse bytestring failed");
+            }
             next_element = mp_obj_new_bytes(buf, n);
             m_free(buf);
             break;
@@ -91,7 +93,9 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             size_t n;
             err = cbor_value_dup_text_string(it, &buf, &n, it);
             if (err)
+            {
                 mp_raise_ValueError("parse string failed");
+            }
             next_element = mp_obj_new_str(buf, n);
             m_free(buf);
             break;
@@ -158,7 +162,9 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
 
             err = cbor_value_enter_container(it, &recursed);
             if (err)
+            {
                 mp_raise_ValueError("parse error");
+            }
 
             if (type == CborArrayType)
             {
@@ -172,7 +178,9 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             cbor_it_to_mp_obj_recursive(&recursed, next_element);
             err = cbor_value_leave_container(it, &recursed);
             if (err)
+            {
                 mp_raise_ValueError("parse error");
+            }
 
             break;
         }
@@ -222,13 +230,16 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
         {
             err = cbor_value_advance_fixed(it);
             if (err)
+            {
                 mp_raise_ValueError("parse error");
+            }
         }
     }
 
     if (dict_value_next)
+    {
         mp_raise_ValueError("key with no value in map");
-
+    }
     return parent_obj;
 }
 
@@ -258,10 +269,10 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
     mp_obj_t key = entry_tuple->items[0];
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(key, &bufinfo, MP_BUFFER_READ);
-    mp_obj_t sort_tuple[3] = {
-        mp_obj_new_bytes(bufinfo.buf, 1),
-        mp_obj_new_int(bufinfo.len),
-        key};
+    mp_obj_t sort_tuple[3];
+    sort_tuple[0] = mp_obj_new_bytes(bufinfo.buf, 1);
+    sort_tuple[1] = mp_obj_new_int(bufinfo.len);
+    sort_tuple[2] = key;
     return mp_obj_new_tuple(3, sort_tuple);
 }
 
@@ -269,6 +280,8 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 
 STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *parent_enc, size_t *encoded_len)
 {
+    const mp_obj_type_t *parent_type = mp_obj_get_type(x_obj);
+
     CborEncoder new_enc;
     CborEncoder *enc;
 
@@ -282,9 +295,8 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
     }
 
     CborError err = CborNoError;
-    const mp_obj_type_t *parent_type = mp_obj_get_type(x_obj);
 
-    size_t bufsize = 64;
+    size_t bufsize = 4;
     uint8_t *buf = NULL;
 
     // this uses either 1 or 2 pass encoding. If the first pass runs out of memory, it continues to encode in order to
@@ -319,7 +331,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
             const char *text = mp_obj_str_get_data(x_obj, &len);
             err = cbor_encode_text_string(enc, text, len);
         }
-        else if (parent_type == &mp_type_bytes || parent_type == &mp_type_memoryview)
+        else if (parent_type == &mp_type_bytes || parent_type == &mp_type_bytearray || parent_type == &mp_type_memoryview)
         {
             mp_buffer_info_t bufinfo;
             mp_get_buffer_raise(x_obj, &bufinfo, MP_BUFFER_READ);
@@ -346,75 +358,74 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
         }
         else if (parent_type == &mp_type_dict)
         {
-            mp_map_t *map = mp_obj_dict_get_map(x_obj);
-            CborEncoder dict_enc;
-            err = cbor_encoder_create_map(enc, &dict_enc, map->used);
-            if (err != CborNoError && err != CborErrorOutOfMemory)
-            {
-                mp_raise_ValueError("Failed to encode map");
-            }
-
             bool canonical = true;
             if (canonical)
             {
+                mp_map_t *map = mp_obj_dict_get_map(x_obj);
                 mp_obj_t list_key_sort = mp_obj_new_list(0, NULL);
-
-                mp_map_elem_t *elem = map->table;
-                for (size_t i = 0; i < map->used; i++, elem++)
+                for (size_t i = 0; i < map->used; i++)
                 {
                     if (mp_map_slot_is_filled(map, i))
                     {
-                        CborEncoder dict_key_enc;
-                        CborEncoder *p_dict_key_enc = &dict_key_enc;
-                        size_t dict_key_bufsize = 16;
-                        uint8_t *dict_key_buf = (uint8_t *)m_malloc(dict_key_bufsize);
-                        cbor_encoder_init(p_dict_key_enc, dict_key_buf, dict_key_bufsize, 0);
-
-                        mp_obj_to_cbor_text_recursive(elem->key, p_dict_key_enc, &dict_key_bufsize);
-                        mp_obj_t key_bytes = mp_obj_new_bytes(dict_key_buf, dict_key_bufsize);
-                        mp_obj_t key_index = mp_obj_new_int(i);
-                        mp_obj_t kv[2] = {key_bytes, key_index};
-                        mp_obj_list_append(list_key_sort, mp_obj_new_tuple(2, kv));
-
+                        size_t dict_key_bufsize = 4;
+                        uint8_t *dict_key_buf = mp_obj_to_cbor_text_recursive(map->table[i].key, NULL, &dict_key_bufsize);
+                        if (dict_key_buf == NULL)
+                        {
+                            mp_raise_ValueError("CBOR encoding failed");
+                        }
+                        mp_obj_t list_key_sort_items[2];
+                        list_key_sort_items[0] = mp_obj_new_bytes(dict_key_buf, dict_key_bufsize);
+                        list_key_sort_items[1] = mp_obj_new_int(i);
+                        mp_obj_list_append(list_key_sort, mp_obj_new_tuple(2, list_key_sort_items));
                         m_free(dict_key_buf);
                     }
                 }
-                mp_obj_t kwa = mp_obj_new_dict(0);
-                mp_obj_dict_store(kwa, MP_ROM_QSTR(MP_QSTR_key), MP_OBJ_FROM_PTR(&cbor_sort_key_obj));
-                mp_obj_list_sort(1, &list_key_sort, mp_obj_dict_get_map(kwa));
+                mp_obj_t list_key_sort_kwargs = mp_obj_new_dict(0);
+                mp_obj_dict_store(list_key_sort_kwargs, MP_ROM_QSTR(MP_QSTR_key), MP_OBJ_FROM_PTR(&cbor_sort_key_obj));
+                mp_obj_list_sort(1, &list_key_sort, mp_obj_dict_get_map(list_key_sort_kwargs));
 
                 size_t len;
                 mp_obj_t *items;
                 mp_obj_get_array(list_key_sort, &len, &items);
-                for (int i = 0; i < len; i++)
+
+                CborEncoder dict_enc;
+                err = cbor_encoder_create_map(enc, &dict_enc, len);
+                if (err != CborNoError && err != CborErrorOutOfMemory)
+                {
+                    mp_raise_ValueError("Failed to encode map");
+                }
+
+                for (size_t i = 0; i < len; i++)
                 {
                     mp_obj_tuple_t *entry_tuple = MP_OBJ_TO_PTR(items[i]);
                     mp_int_t map_index = mp_obj_get_int(entry_tuple->items[1]);
-                    if (mp_map_slot_is_filled(map, map_index))
-                    {
-                        mp_map_elem_t *e = &map->table[map_index];
-                        mp_obj_to_cbor_text_recursive(e->key, &dict_enc, NULL);
-                        mp_obj_to_cbor_text_recursive(e->value, &dict_enc, NULL);
-                    }
+                    mp_map_elem_t *e = &map->table[map_index];
+                    mp_obj_to_cbor_text_recursive(e->key, &dict_enc, NULL);
+                    mp_obj_to_cbor_text_recursive(e->value, &dict_enc, NULL);
                 }
+                err = cbor_encoder_close_container(enc, &dict_enc);
             }
             else
             {
+                mp_map_t *map = mp_obj_dict_get_map(x_obj);
+                CborEncoder dict_enc;
+                err = cbor_encoder_create_map(enc, &dict_enc, map->used);
+                if (err != CborNoError && err != CborErrorOutOfMemory)
+                {
+                    mp_raise_ValueError("Failed to encode map");
+                }
                 mp_map_elem_t *elem = map->table;
                 for (size_t i = 0; i < map->used; i++, elem++)
                 {
-                    if (mp_map_slot_is_filled(map, i))
-                    {
-                        mp_obj_to_cbor_text_recursive(elem->key, &dict_enc, NULL);
-                        mp_obj_to_cbor_text_recursive(elem->value, &dict_enc, NULL);
-                    }
+                    mp_obj_to_cbor_text_recursive(elem->key, &dict_enc, NULL);
+                    mp_obj_to_cbor_text_recursive(elem->value, &dict_enc, NULL);
                 }
+                err = cbor_encoder_close_container(enc, &dict_enc);
             }
-            err = cbor_encoder_close_container(enc, &dict_enc);
         }
         else
         {
-            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "Found object which cannot be encoded, got %s", mp_obj_get_type_str(x_obj)));
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "Found object which cannot be encoded, got [%s]", mp_obj_get_type_str(x_obj)));
         }
 
         if (err == CborNoError)
@@ -443,7 +454,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
             {
                 m_free(buf);
             }
-            mp_raise_ValueError("CBOR encoding failed");
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "CBOR encoding failed. %lu", err));
         }
     }
 
