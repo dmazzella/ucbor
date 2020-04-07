@@ -80,7 +80,7 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             err = cbor_value_dup_byte_string(it, &buf, &n, it);
             if (err)
             {
-                mp_raise_ValueError("parse bytestring failed");
+                mp_raise_ValueError(MP_ERROR_TEXT("parse bytestring failed"));
             }
             next_element = mp_obj_new_bytes(buf, n);
             m_free(buf);
@@ -94,7 +94,7 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             err = cbor_value_dup_text_string(it, &buf, &n, it);
             if (err)
             {
-                mp_raise_ValueError("parse string failed");
+                mp_raise_ValueError(MP_ERROR_TEXT("parse string failed"));
             }
             next_element = mp_obj_new_str(buf, n);
             m_free(buf);
@@ -103,13 +103,13 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
 
         case CborTagType:
         {
-            mp_raise_ValueError("unknown tag present");
+            mp_raise_ValueError(MP_ERROR_TEXT("unknown tag present"));
             break;
         }
 
         case CborSimpleType:
         {
-            mp_raise_ValueError("unknown simple value present");
+            mp_raise_ValueError(MP_ERROR_TEXT("unknown simple value present"));
             break;
         }
 
@@ -118,7 +118,7 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             break;
 
         case CborUndefinedType:
-            mp_raise_ValueError("undefined type encountered");
+            mp_raise_ValueError(MP_ERROR_TEXT("undefined type encountered"));
             break;
 
         case CborBooleanType:
@@ -146,11 +146,11 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
         }
 
         case CborHalfFloatType:
-            mp_raise_NotImplementedError("half float type not supported");
+            mp_raise_NotImplementedError(MP_ERROR_TEXT("half float type not supported"));
             break;
 
         case CborInvalidType:
-            mp_raise_ValueError("invalid type encountered");
+            mp_raise_ValueError(MP_ERROR_TEXT("invalid type encountered"));
             break;
 
         case CborArrayType:
@@ -163,7 +163,7 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             err = cbor_value_enter_container(it, &recursed);
             if (err)
             {
-                mp_raise_ValueError("parse error");
+                mp_raise_ValueError(MP_ERROR_TEXT("parse error"));
             }
 
             if (type == CborArrayType)
@@ -179,7 +179,7 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             err = cbor_value_leave_container(it, &recursed);
             if (err)
             {
-                mp_raise_ValueError("parse error");
+                mp_raise_ValueError(MP_ERROR_TEXT("parse error"));
             }
 
             break;
@@ -231,14 +231,14 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
             err = cbor_value_advance_fixed(it);
             if (err)
             {
-                mp_raise_ValueError("parse error");
+                mp_raise_ValueError(MP_ERROR_TEXT("parse error"));
             }
         }
     }
 
     if (dict_value_next)
     {
-        mp_raise_ValueError("key with no value in map");
+        mp_raise_ValueError(MP_ERROR_TEXT("key with no value in map"));
     }
     return parent_obj;
 }
@@ -253,7 +253,7 @@ STATIC mp_obj_t cbor_loads(mp_obj_t buf_obj)
     CborError err = cbor_parser_init(bufinfo.buf, bufinfo.len, 0, &parser, &it);
     if (err != CborNoError)
     {
-        mp_raise_ValueError("tinycbor init failed");
+        mp_raise_ValueError(MP_ERROR_TEXT("tinycbor init failed"));
     }
 
     mp_obj_t result = cbor_it_to_mp_obj_recursive(&it, mp_const_none);
@@ -347,7 +347,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
             err = cbor_encoder_create_array(enc, &list_enc, len);
             if (err != CborNoError && err != CborErrorOutOfMemory)
             {
-                mp_raise_ValueError("Failed to encode array");
+                mp_raise_ValueError(MP_ERROR_TEXT("Failed to encode array"));
             }
 
             for (size_t i = 0; i < len; ++i)
@@ -371,7 +371,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
                         uint8_t *dict_key_buf = mp_obj_to_cbor_text_recursive(map->table[i].key, NULL, &dict_key_bufsize);
                         if (dict_key_buf == NULL)
                         {
-                            mp_raise_ValueError("CBOR encoding failed");
+                            mp_raise_ValueError(MP_ERROR_TEXT("CBOR encoding failed"));
                         }
                         mp_obj_t list_key_sort_items[2];
                         list_key_sort_items[0] = mp_obj_new_bytes(dict_key_buf, dict_key_bufsize);
@@ -392,7 +392,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
                 err = cbor_encoder_create_map(enc, &dict_enc, len);
                 if (err != CborNoError && err != CborErrorOutOfMemory)
                 {
-                    mp_raise_ValueError("Failed to encode map");
+                    mp_raise_ValueError(MP_ERROR_TEXT("Failed to encode map"));
                 }
 
                 for (size_t i = 0; i < len; i++)
@@ -412,7 +412,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
                 err = cbor_encoder_create_map(enc, &dict_enc, map->used);
                 if (err != CborNoError && err != CborErrorOutOfMemory)
                 {
-                    mp_raise_ValueError("Failed to encode map");
+                    mp_raise_ValueError(MP_ERROR_TEXT("Failed to encode map"));
                 }
                 mp_map_elem_t *elem = map->table;
                 for (size_t i = 0; i < map->used; i++, elem++)
@@ -425,7 +425,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
         }
         else
         {
-            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "Found object which cannot be encoded, got [%s]", mp_obj_get_type_str(x_obj)));
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Found object which cannot be encoded, got [%s]"), mp_obj_get_type_str(x_obj)));
         }
 
         if (err == CborNoError)
@@ -454,7 +454,7 @@ STATIC uint8_t *mp_obj_to_cbor_text_recursive(mp_obj_t x_obj, CborEncoder *paren
             {
                 m_free(buf);
             }
-            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "CBOR encoding failed. %lu", err));
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("CBOR encoding failed. %lu"), err));
         }
     }
 
@@ -476,7 +476,7 @@ STATIC mp_obj_t cbor_dumps(mp_obj_t x_obj)
 
     if (buf == NULL)
     {
-        mp_raise_ValueError("CBOR encoding failed");
+        mp_raise_ValueError(MP_ERROR_TEXT("CBOR encoding failed"));
     }
 
     mp_obj_t result = mp_obj_new_bytes(buf, len);
