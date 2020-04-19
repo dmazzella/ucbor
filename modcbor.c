@@ -133,7 +133,7 @@ STATIC mp_obj_t cbor_it_to_mp_obj_recursive(CborValue *it, mp_obj_t parent_obj)
         {
             double val;
             cbor_value_get_double(it, &val);
-            next_element = mp_obj_new_float(val);
+            next_element = mp_obj_new_float((float)val);
             break;
         }
 
