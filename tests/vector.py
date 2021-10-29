@@ -9,10 +9,13 @@ def cbor2hex(data):
     print(ce, data)
     return binascii.hexlify(ce).decode()
 
+
 """
 From https://github.com/cbor/test-vectors
 Unsupported values are commented out.
 """
+
+
 def test_vectors():
     _TEST_VECTORS = [
         ("00", 0),
@@ -137,10 +140,13 @@ def test_vectors():
             print("ERROR in test vector, %s" % data)
             raise
 
+
 """
 As defined in section 6 of:
 https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-client-to-authenticator-protocol-v2.0-ps-20170927.html
 """
+
+
 def test_integers():
     assert cbor2hex(0) == "00"
     assert cbor2hex(0) == "00"
@@ -150,19 +156,21 @@ def test_integers():
     assert cbor2hex(256) == "190100"
     assert cbor2hex(65535) == "19ffff"
     assert cbor2hex(65536) == "1a00010000"
-    # assert cbor2hex(4294967295) == "1affffffff"
-    # assert cbor2hex(4294967296) == "1b0000000100000000"
+    assert cbor2hex(4294967295) == "1affffffff"
+    assert cbor2hex(4294967296) == "1b0000000100000000"
     assert cbor2hex(-1) == "20"
     assert cbor2hex(-24) == "37"
     assert cbor2hex(-25) == "3818"
+
 
 def test_key_order():
     _TEST_VECTORS = [
         ("a30100413200613300", {"3": 0, b"2": 0, 1: 0}),
         ("a3190100004000613300", {"3": 0, b"": 0, 256: 0}),
         ("a3413300423232004331313100", {b"22": 0, b"3": 0, b"111": 0}),
-        # ("a4000018ff00190100001b000000010000000000", {4294967296: 0, 255: 0, 256: 0, 0: 0}),
-        ("a3433030310043303032004330303300", {b"001": 0, b"003": 0, b"002": 0}),
+        ("a4000018ff00190100001b000000010000000000", {4294967296: 0, 255: 0, 256: 0, 0: 0}),
+        ("a3433030310043303032004330303300",
+         {b"001": 0, b"003": 0, b"002": 0}),
         ("a2f400f500", {True: 0, False: 0}),
     ]
     for (data, value) in _TEST_VECTORS:
@@ -171,6 +179,7 @@ def test_key_order():
         except Exception:
             print("ERROR in test_key_order, {:s}".format(data))
             raise
+
 
 if __name__ == "__main__":
     test_vectors()
