@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # pylint:disable=unresolved-import
-import cbor
-import ucbor
+import _cbor as cbor
+import cbor as ucbor
 
 import utime
 

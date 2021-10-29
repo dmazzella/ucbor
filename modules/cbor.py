@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=import-error
+import logging
+
+# import _cbor
 import micropython
 import ustruct
+
+log = logging.getLogger(__name__)
 
 
 @micropython.native
@@ -63,6 +68,8 @@ def dumps(data):
 
 def encode(data):
     r = dumps(data)
+    # _r = _cbor.encode(data)
+    # log.debug("\n%r\n%r\n%r", data, r, _r)
     return r
 
 
@@ -133,4 +140,6 @@ def loads(data):
 
 def decode(data):
     r, _ = loads(data)
+    # _r = _cbor.decode(data)
+    # log.debug("\n%r\n%r\n%r", data, r, _r)
     return r
