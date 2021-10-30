@@ -134,5 +134,5 @@ def loads(data):
 def decode(data):
     r, _ = loads(data)
     # _r = cbor.decode(data)
-    # log.debug("\n%r\n%r\n%r", data, r, _r)
+    # print(f"\n{data}\n{r}\n{_r}")
     return r
