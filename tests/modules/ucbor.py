@@ -1,15 +1,9 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=import-error
-import logging
-
 import cbor
-import micropython
 import ustruct
 
-log = logging.getLogger(__name__)
 
-
-@micropython.native
 def dumps(data):
     def _dump_int(data, mt=0):
         if data < 0:
@@ -69,11 +63,10 @@ def dumps(data):
 def encode(data):
     r = dumps(data)
     # _r = cbor.encode(data)
-    # log.debug("\n%r\n%r\n%r", data, r, _r)
+    # print(f"\n{data}\n{r}\n{_r}")
     return r
 
 
-@micropython.native
 def loads(data):
     def _load_int(ai, data):
         if ai < 24:
