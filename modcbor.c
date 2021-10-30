@@ -42,7 +42,6 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr);
 STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
 {
     mp_obj_t val = mp_const_none;
-    mp_obj_t data = mp_const_none;
 
     if (ai < 24)
     {
@@ -74,110 +73,59 @@ STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
         nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, MP_ERROR_TEXT("Invalid additional information")));
     }
 
-    data = mp_obj_new_bytes((const byte *)data_vstr->buf, data_vstr->len);
-    vstr_cut_head_bytes(data_vstr, mp_obj_get_int(val));
-
-    mp_obj_t result_tuple[2] = {val, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    return val;
 }
 
 STATIC mp_obj_t cbor_load_bool(const byte ai, vstr_t *data_vstr)
 {
     mp_obj_t val = mp_obj_new_bool(ai == 21);
-    mp_obj_t data = mp_obj_new_bytes((const byte *)data_vstr->buf, data_vstr->len);
-    mp_obj_t result_tuple[2] = {val, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    return val;
 }
 
 STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
 {
-    mp_obj_tuple_t *load_int_tuple = MP_OBJ_TO_PTR(cbor_load_int(ai, data_vstr));
-    mp_buffer_info_t bufinfo_data;
-    mp_get_buffer_raise(load_int_tuple->items[1], &bufinfo_data, MP_BUFFER_READ);
-    mp_obj_t val = mp_obj_new_bytes((const byte *)bufinfo_data.buf, mp_obj_get_int(load_int_tuple->items[0]));
-    mp_obj_t data = mp_obj_new_bytes((const byte *)data_vstr->buf, data_vstr->len);
-    mp_obj_t result_tuple[2] = {val, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    mp_int_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+    mp_obj_t val = mp_obj_new_bytes((const byte *)data_vstr->buf, load_int_len);
+    vstr_cut_head_bytes(data_vstr, load_int_len);
+    return val;
 }
 
 STATIC mp_obj_t cbor_load_text(const byte ai, vstr_t *data_vstr)
 {
-    mp_obj_tuple_t *load_int_tuple = MP_OBJ_TO_PTR(cbor_load_int(ai, data_vstr));
-    mp_buffer_info_t bufinfo_data;
-    mp_get_buffer_raise(load_int_tuple->items[1], &bufinfo_data, MP_BUFFER_READ);
-    mp_obj_t val = mp_obj_new_str((const char *)bufinfo_data.buf, mp_obj_get_int(load_int_tuple->items[0]));
-    mp_obj_t data = mp_obj_new_bytes((const byte *)data_vstr->buf, data_vstr->len);
-    mp_obj_t result_tuple[2] = {val, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    mp_int_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+    mp_obj_t val = mp_obj_new_str(data_vstr->buf, load_int_len);
+    vstr_cut_head_bytes(data_vstr, load_int_len);
+    return val;
 }
 
 STATIC mp_obj_t cbor_load_list(const byte ai, vstr_t *data_vstr)
 {
-    mp_obj_tuple_t *load_int_tuple = MP_OBJ_TO_PTR(cbor_load_int(ai, data_vstr));
-    size_t result_int_len = mp_obj_get_int(load_int_tuple->items[0]);
-    mp_obj_t data = load_int_tuple->items[1];
-
+    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
     mp_obj_t items = mp_obj_new_list(0, NULL);
-    for (size_t i = 0; i < result_int_len; i++)
+    for (size_t i = 0; i < load_int_len; i++)
     {
-        mp_buffer_info_t bufinfo_data;
-        mp_get_buffer_raise(data, &bufinfo_data, MP_BUFFER_READ);
-
-        vstr_t data_vstr;
-        vstr_init(&data_vstr, bufinfo_data.len);
-        vstr_add_strn(&data_vstr, (const char *)bufinfo_data.buf, bufinfo_data.len);
-
-        mp_obj_tuple_t *result_tuple = MP_OBJ_TO_PTR(cbor_loads(&data_vstr));
-        mp_obj_list_append(items, result_tuple->items[0]);
-        data = result_tuple->items[1];
-
-        vstr_clear(&data_vstr);
+        mp_obj_t item = cbor_loads(data_vstr);
+        mp_obj_list_append(items, item);
     }
-    mp_obj_t result_tuple[2] = {items, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    return items;
 }
 
 STATIC mp_obj_t cbor_load_dict(const byte ai, vstr_t *data_vstr)
 {
-    mp_obj_tuple_t *load_int_tuple = MP_OBJ_TO_PTR(cbor_load_int(ai, data_vstr));
-    size_t result_int_len = mp_obj_get_int(load_int_tuple->items[0]);
-    mp_obj_t data = load_int_tuple->items[1];
-
+    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
     mp_obj_t dict = mp_obj_new_dict(0);
-    for (size_t i = 0; i < result_int_len; i++)
+    for (size_t i = 0; i < load_int_len; i++)
     {
-        mp_buffer_info_t bufinfo_key;
-        mp_get_buffer_raise(data, &bufinfo_key, MP_BUFFER_READ);
-
-        vstr_t vstr_key;
-        vstr_init(&vstr_key, bufinfo_key.len);
-        vstr_add_strn(&vstr_key, (const char *)bufinfo_key.buf, bufinfo_key.len);
-        mp_obj_tuple_t *result_key_tuple = MP_OBJ_TO_PTR(cbor_loads(&vstr_key));
-        mp_obj_t value = result_key_tuple->items[1];
-
-        mp_buffer_info_t bufinfo_value;
-        mp_get_buffer_raise(value, &bufinfo_value, MP_BUFFER_READ);
-
-        vstr_t vstr_value;
-        vstr_init(&vstr_value, bufinfo_value.len);
-        vstr_add_strn(&vstr_value, (const char *)bufinfo_value.buf, bufinfo_value.len);
-        mp_obj_tuple_t *result_value_tuple = MP_OBJ_TO_PTR(cbor_loads(&vstr_value));
-
-        mp_obj_dict_store(dict, result_key_tuple->items[0], result_value_tuple->items[0]);
-
-        data = result_value_tuple->items[1];
-
-        vstr_clear(&vstr_key);
-        vstr_clear(&vstr_value);
+        mp_obj_t key = cbor_loads(data_vstr);
+        mp_obj_t value = MP_OBJ_TO_PTR(cbor_loads(data_vstr));
+        mp_obj_dict_store(dict, key, value);
     }
-    mp_obj_t result_tuple[2] = {dict, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    return dict;
 }
 
 STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
 {
     mp_obj_t val = mp_const_none;
-    mp_obj_t data = mp_const_none;
 
     byte fb = data_vstr->buf[0];
     vstr_cut_head_bytes(data_vstr, 1);
@@ -186,51 +134,37 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
     {
     case 0:
     {
-        mp_obj_tuple_t *load_int_tuple = MP_OBJ_TO_PTR(cbor_load_int((fb & 0x1f), data_vstr));
-        val = load_int_tuple->items[0];
-        data = load_int_tuple->items[1];
+        val = cbor_load_int((fb & 0x1f), data_vstr);
         break;
     }
     case 1:
     {
-        mp_obj_tuple_t *load_nint_tuple = MP_OBJ_TO_PTR(cbor_load_int((fb & 0x1f), data_vstr));
-        val = mp_binary_op(MP_BINARY_OP_SUBTRACT, mp_obj_new_int(-1), load_nint_tuple->items[0]);
-        data = load_nint_tuple->items[1];
+        val = mp_binary_op(MP_BINARY_OP_SUBTRACT, mp_obj_new_int(-1), cbor_load_int((fb & 0x1f), data_vstr));
         break;
     }
     case 2:
     {
-        mp_obj_tuple_t *load_bytes_tuple = MP_OBJ_TO_PTR(cbor_load_bytes((fb & 0x1f), data_vstr));
-        val = load_bytes_tuple->items[0];
-        data = load_bytes_tuple->items[1];
+        val = cbor_load_bytes((fb & 0x1f), data_vstr);
         break;
     }
     case 3:
     {
-        mp_obj_tuple_t *load_text_tuple = MP_OBJ_TO_PTR(cbor_load_text((fb & 0x1f), data_vstr));
-        val = load_text_tuple->items[0];
-        data = load_text_tuple->items[1];
+        val = cbor_load_text((fb & 0x1f), data_vstr);
         break;
     }
     case 4:
     {
-        mp_obj_tuple_t *load_list_tuple = MP_OBJ_TO_PTR(cbor_load_list((fb & 0x1f), data_vstr));
-        val = load_list_tuple->items[0];
-        data = load_list_tuple->items[1];
+        val = cbor_load_list((fb & 0x1f), data_vstr);
         break;
     }
     case 5:
     {
-        mp_obj_tuple_t *load_dict_tuple = MP_OBJ_TO_PTR(cbor_load_dict((fb & 0x1f), data_vstr));
-        val = load_dict_tuple->items[0];
-        data = load_dict_tuple->items[1];
+        val = cbor_load_dict((fb & 0x1f), data_vstr);
         break;
     }
     case 7:
     {
-        mp_obj_tuple_t *load_bool_tuple = MP_OBJ_TO_PTR(cbor_load_bool((fb & 0x1f), data_vstr));
-        val = load_bool_tuple->items[0];
-        data = load_bool_tuple->items[1];
+        val = cbor_load_bool((fb & 0x1f), data_vstr);
         break;
     }
     default:
@@ -239,8 +173,7 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
     }
     }
 
-    mp_obj_t result_tuple[2] = {val, data};
-    return mp_obj_new_tuple(MP_ARRAY_SIZE(result_tuple), result_tuple);
+    return val;
 }
 
 STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
@@ -251,9 +184,9 @@ STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
     vstr_t data_vstr;
     vstr_init(&data_vstr, bufinfo_data.len);
     vstr_add_strn(&data_vstr, (const char *)bufinfo_data.buf, bufinfo_data.len);
-    mp_obj_tuple_t *loads_tuple = MP_OBJ_TO_PTR(cbor_loads(&data_vstr));
+    mp_obj_t val = cbor_loads(&data_vstr);
     vstr_clear(&data_vstr);
-    return loads_tuple->items[0];
+    return val;
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_decode_obj, cbor_decode);
@@ -423,7 +356,7 @@ STATIC vstr_t *cbor_dump_dict(mp_obj_t obj_data)
 
 #if defined(MICROPY_PY_UCBOR_CANONICAL)
         mp_obj_t items = mp_obj_new_list(0, NULL);
-        for (size_t i = 0; i < map->used; i++)
+        for (size_t i = 0; i < map->alloc; i++)
         {
             if (mp_map_slot_is_filled(map, i))
             {
@@ -459,7 +392,7 @@ STATIC vstr_t *cbor_dump_dict(mp_obj_t obj_data)
             vstr_add_strn(vstr, (const char *)bufinfo_value.buf, bufinfo_value.len);
         }
 #else
-        for (size_t i = 0; i < map->used; i++)
+        for (size_t i = 0; i < map->alloc; i++)
         {
             if (mp_map_slot_is_filled(map, i))
             {
@@ -538,6 +471,6 @@ const mp_obj_module_t mp_module_ucbor = {
 };
 
 // Register the module to make it available in Python
-MP_REGISTER_MODULE(MP_QSTR__cbor, mp_module_ucbor, MICROPY_PY_UCBOR);
+MP_REGISTER_MODULE(MP_QSTR_cbor, mp_module_ucbor, MICROPY_PY_UCBOR);
 
 #endif // MICROPY_PY_UCBOR

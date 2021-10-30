@@ -2,7 +2,7 @@
 # pylint: disable=import-error
 import logging
 
-# import _cbor
+import cbor
 import micropython
 import ustruct
 
@@ -68,7 +68,7 @@ def dumps(data):
 
 def encode(data):
     r = dumps(data)
-    # _r = _cbor.encode(data)
+    # _r = cbor.encode(data)
     # log.debug("\n%r\n%r\n%r", data, r, _r)
     return r
 
@@ -140,6 +140,6 @@ def loads(data):
 
 def decode(data):
     r, _ = loads(data)
-    # _r = _cbor.decode(data)
+    # _r = cbor.decode(data)
     # log.debug("\n%r\n%r\n%r", data, r, _r)
     return r
