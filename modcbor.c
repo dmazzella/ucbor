@@ -191,7 +191,7 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 #endif
 
-STATIC mp_obj_t cbor_encode(mp_obj_t obj_data);
+STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
 
 STATIC void cbor_dump_int(mp_obj_t obj_data, mp_int_t mt, vstr_t *data_vstr)
 {
@@ -275,9 +275,7 @@ STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
 
     for (size_t i = 0; i < len; i++)
     {
-        mp_buffer_info_t bufinfo;
-        mp_get_buffer_raise(cbor_encode(items[i]), &bufinfo, MP_BUFFER_READ);
-        vstr_add_strn(data_vstr, (const char *)bufinfo.buf, bufinfo.len);
+        cbor_dumps(items[i], data_vstr);
     }
 }
 
@@ -292,7 +290,7 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
     {
         if (mp_map_slot_is_filled(map, i))
         {
-            mp_obj_t items_items[2] = {cbor_encode(map->table[i].key), cbor_encode(map->table[i].value)};
+            mp_obj_t items_items[2] = {cbor_dumps(map->table[i].key, NULL), cbor_dumps(map->table[i].value, NULL)};
             mp_obj_list_append(items, mp_obj_new_tuple(MP_ARRAY_SIZE(items_items), items_items));
         }
     }
@@ -321,53 +319,72 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
         if (mp_map_slot_is_filled(map, i))
         {
             mp_buffer_info_t bufinfo_key;
-            mp_get_buffer_raise(cbor_encode(map->table[i].key), &bufinfo_key, MP_BUFFER_READ);
+            mp_get_buffer_raise(cbor_dumps(map->table[i].key, data_vstr), &bufinfo_key, MP_BUFFER_READ);
             vstr_add_strn(data_vstr, (const char *)bufinfo_key.buf, bufinfo_key.len);
 
             mp_buffer_info_t bufinfo_value;
-            mp_get_buffer_raise(cbor_encode(map->table[i].value), &bufinfo_value, MP_BUFFER_READ);
+            mp_get_buffer_raise(cbor_dumps(map->table[i].value, data_vstr), &bufinfo_value, MP_BUFFER_READ);
             vstr_add_strn(data_vstr, (const char *)bufinfo_value.buf, bufinfo_value.len);
         }
     }
 #endif
 }
 
-STATIC mp_obj_t cbor_encode(mp_obj_t obj_data)
+STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     const mp_obj_type_t *obj_data_type = mp_obj_get_type(obj_data);
-    vstr_t data_vstr;
-    vstr_init(&data_vstr, 16);
+    bool new_data_vstr = (data_vstr == NULL);
+    if (new_data_vstr && (data_vstr = vstr_new(16)) == NULL)
+    {
+        mp_raise_msg_varg(&mp_type_MemoryError, MP_ERROR_TEXT("memory allocation failed, allocating %u bytes"), 16);
+    }
 
     if (obj_data_type == &mp_type_int)
     {
-        cbor_dump_int(obj_data, 0, &data_vstr);
+        cbor_dump_int(obj_data, 0, data_vstr);
     }
     else if (obj_data_type == &mp_type_bool)
     {
-        cbor_dump_bool(obj_data, &data_vstr);
+        cbor_dump_bool(obj_data, data_vstr);
     }
     else if (obj_data_type == &mp_type_str)
     {
-        cbor_dump_text(obj_data, &data_vstr);
+        cbor_dump_text(obj_data, data_vstr);
     }
     else if (obj_data_type == &mp_type_bytes || obj_data_type == &mp_type_bytearray || obj_data_type == &mp_type_memoryview)
     {
-        cbor_dump_bytes(obj_data, &data_vstr);
+        cbor_dump_bytes(obj_data, data_vstr);
     }
     else if (obj_data_type == &mp_type_list || obj_data_type == &mp_type_tuple)
     {
-        cbor_dump_list(obj_data, &data_vstr);
+        cbor_dump_list(obj_data, data_vstr);
     }
     else if (obj_data_type == &mp_type_dict)
     {
-        cbor_dump_dict(obj_data, &data_vstr);
+        cbor_dump_dict(obj_data, data_vstr);
     }
     else
     {
+        if (new_data_vstr)
+        {
+            vstr_free(data_vstr);
+        }
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported value: %s"), mp_obj_get_type_str(obj_data)));
     }
 
-    mp_obj_t val = mp_obj_new_bytes((byte *)data_vstr.buf, data_vstr.len);
+    mp_obj_t val = mp_obj_new_bytes((byte *)data_vstr->buf, data_vstr->len);
+    if (new_data_vstr)
+    {
+        vstr_free(data_vstr);
+    }
+    return val;
+}
+
+STATIC mp_obj_t cbor_encode(mp_obj_t obj_data)
+{
+    vstr_t data_vstr;
+    vstr_init(&data_vstr, 16);
+    mp_obj_t val = cbor_dumps(obj_data, &data_vstr);
     vstr_clear(&data_vstr);
     return val;
 }
