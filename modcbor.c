@@ -37,6 +37,8 @@
 #include "py/objstr.h"
 #include "py/objint.h"
 
+STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr);
+STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
 STATIC mp_obj_t cbor_loads(vstr_t *data_vstr);
 
 STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
@@ -62,10 +64,14 @@ STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
     return val;
 }
 
+STATIC mp_obj_t cbor_load_uint(const byte ai, vstr_t *data_vstr)
+{
+    return mp_binary_op(MP_BINARY_OP_SUBTRACT, mp_obj_new_int(-1), cbor_load_int(ai, data_vstr));
+}
+
 STATIC mp_obj_t cbor_load_bool(const byte ai, vstr_t *data_vstr)
 {
-    mp_obj_t val = mp_obj_new_bool(ai == 21);
-    return val;
+    return mp_obj_new_bool(ai == 21);
 }
 
 STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
@@ -125,7 +131,7 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
     }
     case 1:
     {
-        val = mp_binary_op(MP_BINARY_OP_SUBTRACT, mp_obj_new_int(-1), cbor_load_int((fb & 0x1f), data_vstr));
+        val = cbor_load_uint((fb & 0x1f), data_vstr);
         break;
     }
     case 2:
@@ -164,12 +170,9 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
 {
-    mp_buffer_info_t bufinfo_data;
-    mp_get_buffer_raise(obj_data, &bufinfo_data, MP_BUFFER_READ);
-
     vstr_t data_vstr;
-    vstr_init(&data_vstr, bufinfo_data.len);
-    vstr_add_strn(&data_vstr, (const char *)bufinfo_data.buf, bufinfo_data.len);
+    vstr_init(&data_vstr, 16);
+    cbor_dump_buffer(obj_data, &data_vstr);
     mp_obj_t val = cbor_loads(&data_vstr);
     vstr_clear(&data_vstr);
     return val;
@@ -190,8 +193,6 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 #endif
-
-STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
 
 STATIC void cbor_dump_int(mp_obj_t obj_data, mp_int_t mt, vstr_t *data_vstr)
 {
@@ -244,26 +245,35 @@ STATIC void cbor_dump_int(mp_obj_t obj_data, mp_int_t mt, vstr_t *data_vstr)
 #endif
 }
 
-STATIC void cbor_dump_bool(mp_obj_t obj_data, vstr_t *data_vstr)
+STATIC void cbor_dump_buffer_with_optional_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
-
-    vstr_add_byte(data_vstr, (byte)(mp_obj_is_true(obj_data) ? 0xf5 : 0xf4));
+    mp_buffer_info_t bufinfo;
+    mp_get_buffer_raise(obj_data, &bufinfo, MP_BUFFER_READ);
+    if (mt != -1)
+    {
+        cbor_dump_int(mp_obj_new_int(bufinfo.len), mt, data_vstr);
+    }
+    vstr_add_strn(data_vstr, (const char *)bufinfo.buf, bufinfo.len);
 }
 
-STATIC void cbor_dump_text(mp_obj_t obj_data, vstr_t *data_vstr)
+STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr)
 {
-    size_t len = 0;
-    const char *text = mp_obj_str_get_data(obj_data, &len);
-    cbor_dump_int(mp_obj_new_int(len), 3, data_vstr);
-    vstr_add_strn(data_vstr, text, len);
+    cbor_dump_buffer_with_optional_major_type(obj_data, data_vstr, -1);
+}
+
+STATIC void cbor_dump_bool(mp_obj_t obj_data, vstr_t *data_vstr)
+{
+    vstr_add_byte(data_vstr, (byte)(mp_obj_is_true(obj_data) ? 0xf5 : 0xf4));
 }
 
 STATIC void cbor_dump_bytes(mp_obj_t obj_data, vstr_t *data_vstr)
 {
-    mp_buffer_info_t bufinfo;
-    mp_get_buffer_raise(obj_data, &bufinfo, MP_BUFFER_READ);
-    cbor_dump_int(mp_obj_new_int(bufinfo.len), 2, data_vstr);
-    vstr_add_strn(data_vstr, (const char *)bufinfo.buf, bufinfo.len);
+    cbor_dump_buffer_with_optional_major_type(obj_data, data_vstr, 2);
+}
+
+STATIC void cbor_dump_text(mp_obj_t obj_data, vstr_t *data_vstr)
+{
+    cbor_dump_buffer_with_optional_major_type(obj_data, data_vstr, 3);
 }
 
 STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
@@ -304,27 +314,16 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
     for (size_t i = 0; i < array_len; i++)
     {
         mp_obj_tuple_t *array_items_tuple = MP_OBJ_TO_PTR(array_items[i]);
-
-        mp_buffer_info_t bufinfo_key;
-        mp_get_buffer_raise(array_items_tuple->items[0], &bufinfo_key, MP_BUFFER_READ);
-        vstr_add_strn(data_vstr, (const char *)bufinfo_key.buf, bufinfo_key.len);
-
-        mp_buffer_info_t bufinfo_value;
-        mp_get_buffer_raise(array_items_tuple->items[1], &bufinfo_value, MP_BUFFER_READ);
-        vstr_add_strn(data_vstr, (const char *)bufinfo_value.buf, bufinfo_value.len);
+        cbor_dump_buffer(array_items_tuple->items[0], data_vstr);
+        cbor_dump_buffer(array_items_tuple->items[1], data_vstr);
     }
 #else
     for (size_t i = 0; i < map->alloc; i++)
     {
         if (mp_map_slot_is_filled(map, i))
         {
-            mp_buffer_info_t bufinfo_key;
-            mp_get_buffer_raise(cbor_dumps(map->table[i].key, data_vstr), &bufinfo_key, MP_BUFFER_READ);
-            vstr_add_strn(data_vstr, (const char *)bufinfo_key.buf, bufinfo_key.len);
-
-            mp_buffer_info_t bufinfo_value;
-            mp_get_buffer_raise(cbor_dumps(map->table[i].value, data_vstr), &bufinfo_value, MP_BUFFER_READ);
-            vstr_add_strn(data_vstr, (const char *)bufinfo_value.buf, bufinfo_value.len);
+            cbor_dumps(map->table[i].key, data_vstr);
+            cbor_dumps(map->table[i].value, data_vstr);
         }
     }
 #endif
