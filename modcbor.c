@@ -184,10 +184,7 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
     mp_obj_t key = entry_tuple->items[0];
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(key, &bufinfo, MP_BUFFER_READ);
-    mp_obj_t sort_tuple[3] = {
-        mp_obj_new_bytes(bufinfo.buf, 1),
-        mp_obj_new_int(bufinfo.len),
-        key};
+    mp_obj_t sort_tuple[3] = {mp_obj_new_bytes(bufinfo.buf, 1), mp_obj_new_int(bufinfo.len), key};
     return mp_obj_new_tuple(MP_ARRAY_SIZE(sort_tuple), sort_tuple);
 }
 
@@ -250,7 +247,7 @@ STATIC void cbor_dump_int(mp_obj_t obj_data, mp_int_t mt, vstr_t *data_vstr)
 STATIC void cbor_dump_bool(mp_obj_t obj_data, vstr_t *data_vstr)
 {
 
-    vstr_add_byte(data_vstr, (byte)(mp_obj_get_int(obj_data) ? 0xf5 : 0xf4));
+    vstr_add_byte(data_vstr, (byte)(mp_obj_is_true(obj_data) ? 0xf5 : 0xf4));
 }
 
 STATIC void cbor_dump_text(mp_obj_t obj_data, vstr_t *data_vstr)
@@ -295,15 +292,7 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
     {
         if (mp_map_slot_is_filled(map, i))
         {
-            mp_buffer_info_t bufinfo_key;
-            mp_get_buffer_raise(cbor_encode(map->table[i].key), &bufinfo_key, MP_BUFFER_READ);
-
-            mp_buffer_info_t bufinfo_value;
-            mp_get_buffer_raise(cbor_encode(map->table[i].value), &bufinfo_value, MP_BUFFER_READ);
-
-            mp_obj_t items_items[2] = {
-                mp_obj_new_bytes(bufinfo_key.buf, bufinfo_key.len),
-                mp_obj_new_bytes(bufinfo_value.buf, bufinfo_value.len)};
+            mp_obj_t items_items[2] = {cbor_encode(map->table[i].key), cbor_encode(map->table[i].value)};
             mp_obj_list_append(items, mp_obj_new_tuple(MP_ARRAY_SIZE(items_items), items_items));
         }
     }
