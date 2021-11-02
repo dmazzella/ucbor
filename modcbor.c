@@ -37,6 +37,18 @@
 #include "py/objstr.h"
 #include "py/objint.h"
 
+typedef struct _mp_cbor_load_func_t
+{
+    const byte _mt;
+    mp_obj_t (*_func)(const byte _ai, vstr_t *_data_vstr);
+} mp_cbor_load_func_t;
+
+typedef struct _mp_cbor_dump_func_t
+{
+    const mp_obj_type_t *_type;
+    void (*_func)(mp_obj_t _obj_data, vstr_t *_data_vstr);
+} mp_cbor_dump_func_t;
+
 STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr);
 STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
 STATIC mp_obj_t cbor_loads(vstr_t *data_vstr);
@@ -115,57 +127,33 @@ STATIC mp_obj_t cbor_load_dict(const byte ai, vstr_t *data_vstr)
     return dict;
 }
 
+STATIC mp_obj_t cbor_unsupported_major_type(const byte ai, vstr_t *data_vstr)
+{
+    nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported major type: %d"), (ai >> 5)));
+}
+
+STATIC mp_cbor_load_func_t load_functions_map[] = {
+    {0, cbor_load_int},
+    {1, cbor_load_uint},
+    {2, cbor_load_bytes},
+    {3, cbor_load_text},
+    {4, cbor_load_list},
+    {5, cbor_load_dict},
+    {6, cbor_unsupported_major_type},
+    {7, cbor_load_bool},
+};
+
 STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
 {
-    mp_obj_t val = mp_const_none;
-
     byte fb = data_vstr->buf[0];
     vstr_cut_head_bytes(data_vstr, 1);
-
-    switch ((fb >> 5))
+    byte mt = (fb >> 5);
+    byte ai = (fb & 0x1f);
+    if (mt > 7)
     {
-    case 0:
-    {
-        val = cbor_load_int((fb & 0x1f), data_vstr);
-        break;
+        cbor_unsupported_major_type(ai, data_vstr);
     }
-    case 1:
-    {
-        val = cbor_load_uint((fb & 0x1f), data_vstr);
-        break;
-    }
-    case 2:
-    {
-        val = cbor_load_bytes((fb & 0x1f), data_vstr);
-        break;
-    }
-    case 3:
-    {
-        val = cbor_load_text((fb & 0x1f), data_vstr);
-        break;
-    }
-    case 4:
-    {
-        val = cbor_load_list((fb & 0x1f), data_vstr);
-        break;
-    }
-    case 5:
-    {
-        val = cbor_load_dict((fb & 0x1f), data_vstr);
-        break;
-    }
-    case 7:
-    {
-        val = cbor_load_bool((fb & 0x1f), data_vstr);
-        break;
-    }
-    default:
-    {
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported major type: %d"), (fb >> 5)));
-    }
-    }
-
-    return val;
+    return load_functions_map[mt]._func(ai, data_vstr);
 }
 
 STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
@@ -194,7 +182,7 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 #endif
 
-STATIC void cbor_dump_int(mp_obj_t obj_data, mp_int_t mt, vstr_t *data_vstr)
+STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
     mp_int_t data = mp_obj_get_int(obj_data);
     if (data < 0)
@@ -245,13 +233,18 @@ STATIC void cbor_dump_int(mp_obj_t obj_data, mp_int_t mt, vstr_t *data_vstr)
 #endif
 }
 
+STATIC void cbor_dump_int(mp_obj_t obj_data, vstr_t *data_vstr)
+{
+    cbor_dump_int_with_major_type(obj_data, data_vstr, 0);
+}
+
 STATIC void cbor_dump_buffer_with_optional_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(obj_data, &bufinfo, MP_BUFFER_READ);
     if (mt != -1)
     {
-        cbor_dump_int(mp_obj_new_int(bufinfo.len), mt, data_vstr);
+        cbor_dump_int_with_major_type(mp_obj_new_int(bufinfo.len), data_vstr, mt);
     }
     vstr_add_strn(data_vstr, (const char *)bufinfo.buf, bufinfo.len);
 }
@@ -281,7 +274,7 @@ STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
     size_t len;
     mp_obj_t *items;
     mp_obj_get_array(obj_data, &len, &items);
-    cbor_dump_int(mp_obj_new_int(len), 4, data_vstr);
+    cbor_dump_int_with_major_type(mp_obj_new_int(len), data_vstr, 4);
 
     for (size_t i = 0; i < len; i++)
     {
@@ -292,7 +285,7 @@ STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
 STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     mp_map_t *map = mp_obj_dict_get_map(obj_data);
-    cbor_dump_int(mp_obj_new_int(map->used), 5, data_vstr);
+    cbor_dump_int_with_major_type(mp_obj_new_int(map->used), data_vstr, 5);
 
 #if defined(MICROPY_PY_UCBOR_CANONICAL)
     mp_obj_t items = mp_obj_new_list(0, NULL);
@@ -329,54 +322,42 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
 #endif
 }
 
+STATIC mp_cbor_dump_func_t dump_functions_map[] = {
+    {&mp_type_int, cbor_dump_int},
+    {&mp_type_bool, cbor_dump_bool},
+    {&mp_type_str, cbor_dump_text},
+    {&mp_type_bytes, cbor_dump_bytes},
+    {&mp_type_bytearray, cbor_dump_bytes},
+    {&mp_type_memoryview, cbor_dump_bytes},
+    {&mp_type_list, cbor_dump_list},
+    {&mp_type_tuple, cbor_dump_list},
+    {&mp_type_dict, cbor_dump_dict},
+};
+
 STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     const mp_obj_type_t *obj_data_type = mp_obj_get_type(obj_data);
     bool new_data_vstr = (data_vstr == NULL);
-    if (new_data_vstr && (data_vstr = vstr_new(16)) == NULL)
+    for (size_t i = 0; i < MP_ARRAY_SIZE(dump_functions_map); i++)
     {
-        mp_raise_msg_varg(&mp_type_MemoryError, MP_ERROR_TEXT("memory allocation failed, allocating %u bytes"), 16);
-    }
-
-    if (obj_data_type == &mp_type_int)
-    {
-        cbor_dump_int(obj_data, 0, data_vstr);
-    }
-    else if (obj_data_type == &mp_type_bool)
-    {
-        cbor_dump_bool(obj_data, data_vstr);
-    }
-    else if (obj_data_type == &mp_type_str)
-    {
-        cbor_dump_text(obj_data, data_vstr);
-    }
-    else if (obj_data_type == &mp_type_bytes || obj_data_type == &mp_type_bytearray || obj_data_type == &mp_type_memoryview)
-    {
-        cbor_dump_bytes(obj_data, data_vstr);
-    }
-    else if (obj_data_type == &mp_type_list || obj_data_type == &mp_type_tuple)
-    {
-        cbor_dump_list(obj_data, data_vstr);
-    }
-    else if (obj_data_type == &mp_type_dict)
-    {
-        cbor_dump_dict(obj_data, data_vstr);
-    }
-    else
-    {
-        if (new_data_vstr)
+        mp_cbor_dump_func_t current_dump_func = dump_functions_map[i];
+        if (current_dump_func._type == obj_data_type)
         {
-            vstr_free(data_vstr);
+            if (new_data_vstr && (data_vstr = vstr_new(16)) == NULL)
+            {
+                mp_raise_msg_varg(&mp_type_MemoryError, MP_ERROR_TEXT("memory allocation failed, allocating %u bytes"), 16);
+            }
+            current_dump_func._func(obj_data, data_vstr);
+            mp_obj_t val = mp_obj_new_bytes((byte *)data_vstr->buf, data_vstr->len);
+            if (new_data_vstr)
+            {
+                vstr_free(data_vstr);
+            }
+            return val;
         }
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported value: %s"), mp_obj_get_type_str(obj_data)));
     }
 
-    mp_obj_t val = mp_obj_new_bytes((byte *)data_vstr->buf, data_vstr->len);
-    if (new_data_vstr)
-    {
-        vstr_free(data_vstr);
-    }
-    return val;
+    nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported value: %s"), mp_obj_get_type_str(obj_data)));
 }
 
 STATIC mp_obj_t cbor_encode(mp_obj_t obj_data)
