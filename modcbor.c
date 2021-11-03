@@ -37,16 +37,22 @@
 #include "py/objstr.h"
 #include "py/objint.h"
 
+#define VSTR_INIT(vstr, alloc) \
+    vstr_t vstr;               \
+    vstr_init(&vstr, (alloc));
+
+typedef mp_obj_t (*mp_cbor_load_function_t)(const byte _ai, vstr_t *_data_vstr);
 typedef struct _mp_cbor_load_func_t
 {
     const byte _mt;
-    mp_obj_t (*_func)(const byte _ai, vstr_t *_data_vstr);
+    mp_cbor_load_function_t _func;
 } mp_cbor_load_func_t;
 
+typedef void (*mp_cbor_dump_function_t)(mp_obj_t _obj_data, vstr_t *_data_vstr);
 typedef struct _mp_cbor_dump_func_t
 {
     const mp_obj_type_t *_type;
-    void (*_func)(mp_obj_t _obj_data, vstr_t *_data_vstr);
+    mp_cbor_dump_function_t _func;
 } mp_cbor_dump_func_t;
 
 STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr);
@@ -70,7 +76,7 @@ STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
 
     if (!mp_obj_is_int(val))
     {
-        nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, MP_ERROR_TEXT("Invalid additional information")));
+        mp_raise_ValueError(MP_ERROR_TEXT("Invalid additional information"));
     }
 
     return val;
@@ -88,7 +94,7 @@ STATIC mp_obj_t cbor_load_bool(const byte ai, vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
 {
-    mp_int_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
     mp_obj_t val = mp_obj_new_bytes((const byte *)data_vstr->buf, load_int_len);
     vstr_cut_head_bytes(data_vstr, load_int_len);
     return val;
@@ -96,7 +102,7 @@ STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_load_text(const byte ai, vstr_t *data_vstr)
 {
-    mp_int_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
     mp_obj_t val = mp_obj_new_str(data_vstr->buf, load_int_len);
     vstr_cut_head_bytes(data_vstr, load_int_len);
     return val;
@@ -158,8 +164,7 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
 {
-    vstr_t data_vstr;
-    vstr_init(&data_vstr, 16);
+    VSTR_INIT(data_vstr, 16);
     cbor_dump_buffer(obj_data, &data_vstr);
     mp_obj_t val = cbor_loads(&data_vstr);
     vstr_clear(&data_vstr);
@@ -207,7 +212,6 @@ STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, 
         vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
         vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
     }
-#if UINT32_MAX >= 0xffffffff
     else if (data <= 0xffffffff)
     {
         vstr_add_byte(data_vstr, (byte)(mt | 26));
@@ -229,7 +233,6 @@ STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, 
         vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
         vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
     }
-#endif
 #endif
 }
 
@@ -327,31 +330,30 @@ STATIC mp_cbor_dump_func_t dump_functions_map[] = {
     {&mp_type_bool, cbor_dump_bool},
     {&mp_type_str, cbor_dump_text},
     {&mp_type_bytes, cbor_dump_bytes},
-    {&mp_type_bytearray, cbor_dump_bytes},
-    {&mp_type_memoryview, cbor_dump_bytes},
     {&mp_type_list, cbor_dump_list},
-    {&mp_type_tuple, cbor_dump_list},
     {&mp_type_dict, cbor_dump_dict},
 };
 
 STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     const mp_obj_type_t *obj_data_type = mp_obj_get_type(obj_data);
-    bool new_data_vstr = (data_vstr == NULL);
+    bool need_temp_data_vstr = (data_vstr == NULL);
+
     for (size_t i = 0; i < MP_ARRAY_SIZE(dump_functions_map); i++)
     {
         mp_cbor_dump_func_t current_dump_func = dump_functions_map[i];
         if (current_dump_func._type == obj_data_type)
         {
-            if (new_data_vstr && (data_vstr = vstr_new(16)) == NULL)
+            if (need_temp_data_vstr)
             {
-                mp_raise_msg_varg(&mp_type_MemoryError, MP_ERROR_TEXT("memory allocation failed, allocating %u bytes"), 16);
+                VSTR_INIT(temp_data_vstr, 16);
+                data_vstr = &temp_data_vstr;
             }
             current_dump_func._func(obj_data, data_vstr);
             mp_obj_t val = mp_obj_new_bytes((byte *)data_vstr->buf, data_vstr->len);
-            if (new_data_vstr)
+            if (need_temp_data_vstr)
             {
-                vstr_free(data_vstr);
+                vstr_clear(data_vstr);
             }
             return val;
         }
@@ -362,11 +364,7 @@ STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_encode(mp_obj_t obj_data)
 {
-    vstr_t data_vstr;
-    vstr_init(&data_vstr, 16);
-    mp_obj_t val = cbor_dumps(obj_data, &data_vstr);
-    vstr_clear(&data_vstr);
-    return val;
+    return cbor_dumps(obj_data, NULL);
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_encode_obj, cbor_encode);
