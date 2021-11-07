@@ -330,7 +330,10 @@ STATIC mp_cbor_dump_func_t dump_functions_map[] = {
     {&mp_type_bool, cbor_dump_bool},
     {&mp_type_str, cbor_dump_text},
     {&mp_type_bytes, cbor_dump_bytes},
+    {&mp_type_bytearray, cbor_dump_bytes},
+    {&mp_type_memoryview, cbor_dump_bytes},
     {&mp_type_list, cbor_dump_list},
+    {&mp_type_tuple, cbor_dump_list},
     {&mp_type_dict, cbor_dump_dict},
 };
 
