@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # pylint:disable=unresolved-import
+import gc
 import cbor
 import ucbor
 
@@ -7,30 +8,50 @@ import utime
 
 
 def cbor_encode(d):
+    gc.collect()
+    m0 = gc.mem_alloc()
     t0 = utime.ticks_us()
     e = cbor.encode(d)
-    print(f"cbor: {utime.ticks_diff(utime.ticks_us(), t0):.2f}")
+    t1 = utime.ticks_us()
+    gc.collect()
+    m1 = gc.mem_alloc()
+    print(f"cbor: {utime.ticks_diff(t1, t0):.2f} {m1 - m0}")
     return e
 
 
 def ucbor_encode(d):
+    gc.collect()
+    m0 = gc.mem_alloc()
     t0 = utime.ticks_us()
     e = ucbor.encode(d)
-    print(f"ucbor: {utime.ticks_diff(utime.ticks_us(), t0):.2f}")
+    t1 = utime.ticks_us()
+    gc.collect()
+    m1 = gc.mem_alloc()
+    print(f"ucbor: {utime.ticks_diff(t1, t0):.2f} {m1 - m0}")
     return e
 
 
 def cbor_decode(e):
+    gc.collect()
+    m0 = gc.mem_alloc()
     t0 = utime.ticks_us()
     d = cbor.decode(e)
-    print(f"cbor: {utime.ticks_diff(utime.ticks_us(), t0):.2f} {e}")
+    t1 = utime.ticks_us()
+    gc.collect()
+    m1 = gc.mem_alloc()
+    print(f"cbor: {utime.ticks_diff(t1, t0):.2f} {m1 - m0}")
     return d
 
 
 def ucbor_decode(e):
+    gc.collect()
+    m0 = gc.mem_alloc()
     t0 = utime.ticks_us()
     d = ucbor.decode(e)
-    print(f"ucbor: {utime.ticks_diff(utime.ticks_us(), t0):.2f} {e}")
+    t1 = utime.ticks_us()
+    gc.collect()
+    m1 = gc.mem_alloc()
+    print(f"ucbor: {utime.ticks_diff(t1, t0):.2f} {m1 - m0}")
     return d
 
 
@@ -62,7 +83,7 @@ def encode():
     for d in (
         "dma@lemmeen.onmicrosoft.com",
         "Damiano Mazzella",
-        b"\1\2\3\4",
+        "\1\2\3\4",
         "ü",
         "水",
         "𐅑",
@@ -70,7 +91,10 @@ def encode():
         assert cbor_encode(d) == ucbor_encode(d), d
 
     # list
-    for d in (["usb", "nfc", "ble"],):
+    l1 = ["usb", "nfc", "ble"]
+    l2 = [1, True, False, 0xffffffff, {
+        u"foo": b"\x80\x01\x02", u"bar": [1, 2, 3, {u"a": [1, 2, 3, {}]}]}, -1]
+    for d in (l1, l2):
         assert cbor_encode(d) == ucbor_encode(d), d
 
     # dict
@@ -113,6 +137,14 @@ def encode():
         3: b"0F\x02!\x00\x81\x05\xcc\"\x05\xe5L\xd9\x10l\xf5\x864r\xa5\x83\xc4e\xed$\xb9\xea'\xd7\xb2Ro\xea\xd0-u\xaa\x02!\x00\xc5\xd1\xfc\xa8\xb2\x84-\xb9\x04vZ9\x05s\xccU\xd6s\x80\xd5T\x00+\xdb\xb4\xa9\x90BN\xeb\xe6\x0e",
     }
     for d in (d1, d2, d3):
+        assert cbor_encode(d) == ucbor_encode(d), d
+
+    # bytearray
+    for d in (bytearray(b'\x01'),):
+        assert cbor_encode(d) == ucbor_encode(d), d
+
+    # memoryview
+    for d in (memoryview(b'\x01'),):
         assert cbor_encode(d) == ucbor_encode(d), d
 
 

@@ -41,10 +41,15 @@
     vstr_t vstr;               \
     vstr_init(&vstr, (alloc));
 
+#define GET_ARRAY(array_obj) \
+    size_t array_len;        \
+    mp_obj_t *array_items;   \
+    mp_obj_get_array(array_obj, &array_len, &array_items);
+
 typedef mp_obj_t (*mp_cbor_load_function_t)(const byte _ai, vstr_t *_data_vstr);
 typedef struct _mp_cbor_load_func_t
 {
-    const byte _mt;
+    const byte _type;
     mp_cbor_load_function_t _func;
 } mp_cbor_load_func_t;
 
@@ -58,6 +63,16 @@ typedef struct _mp_cbor_dump_func_t
 STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr);
 STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
 STATIC mp_obj_t cbor_loads(vstr_t *data_vstr);
+
+/*
+ ██████     █████████     ███        █████      ██████     █████████
+ ███   ███  ███        ███   ███   ███    ███   ███   ███  ███      
+ ███    ███ ███       ███        ███        ███ ███    ███ ███      
+ ███    ███ ███████   ███        ███        ███ ███    ███ ███████  
+ ███    ███ ███       ███        ███        ███ ███    ███ ███      
+ ███   ███  ███        ███   ███   ███     ███  ███   ███  ███      
+ ██████     █████████    █████       █████      ██████     █████████
+*/
 
 STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
 {
@@ -82,6 +97,9 @@ STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
     return val;
 }
 
+#define LOAD_INT(ai, data_vstr) \
+    size_t loaded_int = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+
 STATIC mp_obj_t cbor_load_uint(const byte ai, vstr_t *data_vstr)
 {
     return mp_binary_op(MP_BINARY_OP_SUBTRACT, mp_obj_new_int(-1), cbor_load_int(ai, data_vstr));
@@ -94,25 +112,25 @@ STATIC mp_obj_t cbor_load_bool(const byte ai, vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
 {
-    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
-    mp_obj_t val = mp_obj_new_bytes((const byte *)data_vstr->buf, load_int_len);
-    vstr_cut_head_bytes(data_vstr, load_int_len);
+    LOAD_INT(ai, data_vstr);
+    mp_obj_t val = mp_obj_new_bytes((const byte *)data_vstr->buf, loaded_int);
+    vstr_cut_head_bytes(data_vstr, loaded_int);
     return val;
 }
 
 STATIC mp_obj_t cbor_load_text(const byte ai, vstr_t *data_vstr)
 {
-    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
-    mp_obj_t val = mp_obj_new_str(data_vstr->buf, load_int_len);
-    vstr_cut_head_bytes(data_vstr, load_int_len);
+    LOAD_INT(ai, data_vstr);
+    mp_obj_t val = mp_obj_new_str(data_vstr->buf, loaded_int);
+    vstr_cut_head_bytes(data_vstr, loaded_int);
     return val;
 }
 
 STATIC mp_obj_t cbor_load_list(const byte ai, vstr_t *data_vstr)
 {
-    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+    LOAD_INT(ai, data_vstr);
     mp_obj_t items = mp_obj_new_list(0, NULL);
-    for (size_t i = 0; i < load_int_len; i++)
+    for (size_t i = 0; i < loaded_int; i++)
     {
         mp_obj_t item = cbor_loads(data_vstr);
         mp_obj_list_append(items, item);
@@ -122,9 +140,9 @@ STATIC mp_obj_t cbor_load_list(const byte ai, vstr_t *data_vstr)
 
 STATIC mp_obj_t cbor_load_dict(const byte ai, vstr_t *data_vstr)
 {
-    size_t load_int_len = mp_obj_get_int(cbor_load_int(ai, data_vstr));
+    LOAD_INT(ai, data_vstr);
     mp_obj_t dict = mp_obj_new_dict(0);
-    for (size_t i = 0; i < load_int_len; i++)
+    for (size_t i = 0; i < loaded_int; i++)
     {
         mp_obj_t key = cbor_loads(data_vstr);
         mp_obj_t value = cbor_loads(data_vstr);
@@ -173,6 +191,16 @@ STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_decode_obj, cbor_decode);
 
+/*
+ █████████ ████     ███     ███        █████      ██████     █████████
+ ███       ██ ███   ███  ███   ███   ███    ███   ███   ███  ███      
+ ███       ███ ███  ███ ███        ███        ███ ███    ███ ███      
+ ███████   ███  ███ ███ ███        ███        ███ ███    ███ ███████  
+ ███       ███   ██ ███ ███        ███        ███ ███    ███ ███      
+ ███       ███    ██ ██  ███   ███   ███     ███  ███   ███  ███      
+ █████████ ███      ███    █████       █████      ██████     █████████
+*/
+
 #if defined(MICROPY_PY_UCBOR_CANONICAL)
 STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
 {
@@ -180,7 +208,7 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
     mp_obj_t key = entry_tuple->items[0];
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(key, &bufinfo, MP_BUFFER_READ);
-    mp_obj_t sort_tuple[3] = {mp_obj_new_bytes(bufinfo.buf, 1), mp_obj_new_int(bufinfo.len), key};
+    mp_obj_t sort_tuple[3] = {mp_obj_new_bytearray_by_ref(1, (byte *)bufinfo.buf), mp_obj_new_int(bufinfo.len), key};
     return mp_obj_new_tuple(MP_ARRAY_SIZE(sort_tuple), sort_tuple);
 }
 
@@ -190,6 +218,8 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
     mp_int_t data = mp_obj_get_int(obj_data);
+    byte ai = 0;
+
     if (data < 0)
     {
         mt = 1;
@@ -199,41 +229,33 @@ STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, 
     mt = mt << 5;
     if (data <= 23)
     {
-        vstr_add_byte(data_vstr, (byte)(mt | data));
+        ai = (byte)(mt | data);
     }
     else if (data <= 0xff)
     {
-        vstr_add_byte(data_vstr, (byte)(mt | 24));
-        vstr_add_byte(data_vstr, (byte)(data));
+        ai = (byte)(mt | 24);
     }
     else if (data <= 0xffff)
     {
-        vstr_add_byte(data_vstr, (byte)(mt | 25));
-        vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
+        ai = (byte)(mt | 25);
     }
     else if (data <= 0xffffffff)
     {
-        vstr_add_byte(data_vstr, (byte)(mt | 26));
-        vstr_add_byte(data_vstr, (byte)((data >> 24) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 16) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
+        ai = (byte)(mt | 26);
     }
 #if UINT32_MAX > 0xffffffff
     else
     {
-        vstr_add_byte(data_vstr, (byte)(mt | 27));
-        vstr_add_byte(data_vstr, (byte)((data >> 56) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 48) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 40) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 32) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 24) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 16) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
-        vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
+        ai = (byte)(mt | 27);
     }
 #endif
+
+    vstr_add_byte(data_vstr, ai);
+    byte n_bytes = (1 << (ai - 24));
+    while (n_bytes)
+    {
+        vstr_add_byte(data_vstr, (byte)((data >> ((--n_bytes) * 8)) & 0xff));
+    }
 }
 
 STATIC void cbor_dump_int(mp_obj_t obj_data, vstr_t *data_vstr)
@@ -274,14 +296,12 @@ STATIC void cbor_dump_text(mp_obj_t obj_data, vstr_t *data_vstr)
 
 STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
 {
-    size_t len;
-    mp_obj_t *items;
-    mp_obj_get_array(obj_data, &len, &items);
-    cbor_dump_int_with_major_type(mp_obj_new_int(len), data_vstr, 4);
+    GET_ARRAY(obj_data);
+    cbor_dump_int_with_major_type(mp_obj_new_int(array_len), data_vstr, 4);
 
-    for (size_t i = 0; i < len; i++)
+    for (size_t i = 0; i < array_len; i++)
     {
-        cbor_dumps(items[i], data_vstr);
+        cbor_dumps(array_items[i], data_vstr);
     }
 }
 
@@ -304,9 +324,7 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
     mp_obj_dict_store(items_kwargs, MP_ROM_QSTR(MP_QSTR_key), MP_OBJ_FROM_PTR(&cbor_sort_key_obj));
     mp_obj_list_sort(1, &items, mp_obj_dict_get_map(items_kwargs));
 
-    size_t array_len;
-    mp_obj_t *array_items;
-    mp_obj_get_array(items, &array_len, &array_items);
+    GET_ARRAY(items);
     for (size_t i = 0; i < array_len; i++)
     {
         mp_obj_tuple_t *array_items_tuple = MP_OBJ_TO_PTR(array_items[i]);
@@ -371,6 +389,16 @@ STATIC mp_obj_t cbor_encode(mp_obj_t obj_data)
 }
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_encode_obj, cbor_encode);
+
+/*
+       ██        ████████   ███
+      ██ ██      ███    ███ ███
+     ██  ███     ███    ███ ███
+    ███   ███    ████████   ███
+   ███████ ███   ███        ███
+  ███       ███  ███        ███
+ ███         ███ ███        ███
+*/
 
 STATIC const mp_rom_map_elem_t mp_module_ucbor_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__cbor)},
