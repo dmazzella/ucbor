@@ -208,7 +208,7 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
     mp_obj_t key = entry_tuple->items[0];
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(key, &bufinfo, MP_BUFFER_READ);
-    mp_obj_t sort_tuple[3] = {mp_obj_new_bytearray(1, (byte *)bufinfo.buf), mp_obj_new_int(bufinfo.len), key};
+    mp_obj_t sort_tuple[3] = {mp_obj_new_bytearray_by_ref(1, (byte *)bufinfo.buf), mp_obj_new_int(bufinfo.len), key};
     return mp_obj_new_tuple(MP_ARRAY_SIZE(sort_tuple), sort_tuple);
 }
 
