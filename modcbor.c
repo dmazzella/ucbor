@@ -208,7 +208,7 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
     mp_obj_t key = entry_tuple->items[0];
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(key, &bufinfo, MP_BUFFER_READ);
-    mp_obj_t sort_tuple[3] = {mp_obj_new_bytearray_by_ref(1, (byte *)bufinfo.buf), mp_obj_new_int(bufinfo.len), key};
+    mp_obj_t sort_tuple[3] = {mp_obj_new_bytearray(1, (byte *)bufinfo.buf), mp_obj_new_int(bufinfo.len), key};
     return mp_obj_new_tuple(MP_ARRAY_SIZE(sort_tuple), sort_tuple);
 }
 
@@ -218,8 +218,6 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
     mp_int_t data = mp_obj_get_int(obj_data);
-    byte ai = 0;
-
     if (data < 0)
     {
         mt = 1;
@@ -229,33 +227,41 @@ STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, 
     mt = mt << 5;
     if (data <= 23)
     {
-        ai = (byte)(mt | data);
+        vstr_add_byte(data_vstr, (byte)(mt | data));
     }
     else if (data <= 0xff)
     {
-        ai = (byte)(mt | 24);
+        vstr_add_byte(data_vstr, (byte)(mt | 24));
+        vstr_add_byte(data_vstr, (byte)(data));
     }
     else if (data <= 0xffff)
     {
-        ai = (byte)(mt | 25);
+        vstr_add_byte(data_vstr, (byte)(mt | 25));
+        vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
     }
     else if (data <= 0xffffffff)
     {
-        ai = (byte)(mt | 26);
+        vstr_add_byte(data_vstr, (byte)(mt | 26));
+        vstr_add_byte(data_vstr, (byte)((data >> 24) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 16) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
     }
 #if UINT32_MAX > 0xffffffff
     else
     {
-        ai = (byte)(mt | 27);
+        vstr_add_byte(data_vstr, (byte)(mt | 27));
+        vstr_add_byte(data_vstr, (byte)((data >> 56) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 48) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 40) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 32) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 24) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 16) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 8) & 0xff));
+        vstr_add_byte(data_vstr, (byte)((data >> 0) & 0xff));
     }
 #endif
-
-    vstr_add_byte(data_vstr, ai);
-    byte n_bytes = (1 << (ai - 24));
-    while (n_bytes)
-    {
-        vstr_add_byte(data_vstr, (byte)((data >> ((--n_bytes) * 8)) & 0xff));
-    }
 }
 
 STATIC void cbor_dump_int(mp_obj_t obj_data, vstr_t *data_vstr)
