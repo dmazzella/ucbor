@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Damiano Mazzella
+ * Copyright (c) 2023 Damiano Mazzella
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
-#if defined(MICROPY_PY_UCBOR)
 
 #include <assert.h>
 #include <stdarg.h>
@@ -784,9 +782,9 @@ STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
         mp_cbor_dump_func_t current_dump_func = dump_functions_map[i];
         if (current_dump_func._type == obj_data_type)
         {
+            VSTR_INIT(temp_data_vstr, 16);
             if (need_temp_data_vstr)
             {
-                VSTR_INIT(temp_data_vstr, 16);
                 data_vstr = &temp_data_vstr;
             }
             current_dump_func._func(obj_data, data_vstr);
@@ -824,5 +822,3 @@ const mp_obj_module_t mp_module_ucbor = {
 
 // Register the module to make it available in Python
 MP_REGISTER_MODULE(MP_QSTR_cbor, mp_module_ucbor);
-
-#endif // MICROPY_PY_UCBOR
