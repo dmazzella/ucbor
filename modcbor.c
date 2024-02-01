@@ -46,22 +46,6 @@
     mp_obj_t *array_items;   \
     mp_obj_get_array(array_obj, &array_len, &array_items);
 
-uint16_t ucbor_bswap16(uint16_t x)
-{
-    return (x >> 8) | (x << 8);
-}
-
-uint32_t ucbor_bswap32(uint32_t x)
-{
-    return (x >> 24) | ((x >> 8) & 0xff00UL) | ((x << 8) & 0xff0000UL) | (x << 24);
-}
-
-#if 0
-uint64_t ucbor_bswap64(uint64_t x) {
-    /* XXX */
-}
-#endif
-
 STATIC mpz_t *mp_mpz_for_int(mp_obj_t arg, mpz_t *temp)
 {
     if (MP_OBJ_IS_SMALL_INT(arg))
