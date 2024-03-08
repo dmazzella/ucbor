@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2023 Damiano Mazzella
+ * Copyright (c) 2024 Damiano Mazzella
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -46,7 +46,7 @@
     mp_obj_t *array_items;   \
     mp_obj_get_array(array_obj, &array_len, &array_items);
 
-STATIC mpz_t *mp_mpz_for_int(mp_obj_t arg, mpz_t *temp)
+static mpz_t *mp_mpz_for_int(mp_obj_t arg, mpz_t *temp)
 {
     if (MP_OBJ_IS_SMALL_INT(arg))
     {
@@ -60,7 +60,7 @@ STATIC mpz_t *mp_mpz_for_int(mp_obj_t arg, mpz_t *temp)
     }
 }
 
-STATIC mp_obj_t int_bit_length(mp_obj_t x)
+static mp_obj_t int_bit_length(mp_obj_t x)
 {
     mpz_t n_temp;
     mpz_t *n = mp_mpz_for_int(x, &n_temp);
@@ -108,11 +108,11 @@ typedef struct _mp_cbor_dump_func_t
     mp_cbor_dump_function_t _func;
 } mp_cbor_dump_func_t;
 
-STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr);
-STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
-STATIC mp_obj_t cbor_loads(vstr_t *data_vstr);
+static void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr);
+static mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr);
+static mp_obj_t cbor_loads(vstr_t *data_vstr);
 
-STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
 {
     mp_obj_t val = mp_const_none;
 
@@ -138,12 +138,12 @@ STATIC mp_obj_t cbor_load_int(const byte ai, vstr_t *data_vstr)
 #define LOAD_INT(ai, data_vstr) \
     size_t loaded_int = mp_obj_get_int(cbor_load_int(ai, data_vstr));
 
-STATIC mp_obj_t cbor_load_uint(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_uint(const byte ai, vstr_t *data_vstr)
 {
     return mp_binary_op(MP_BINARY_OP_SUBTRACT, mp_obj_new_int(-1), cbor_load_int(ai, data_vstr));
 }
 
-STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
 {
     LOAD_INT(ai, data_vstr);
     mp_obj_t val = mp_obj_new_bytes((const byte *)data_vstr->buf, loaded_int);
@@ -151,7 +151,7 @@ STATIC mp_obj_t cbor_load_bytes(const byte ai, vstr_t *data_vstr)
     return val;
 }
 
-STATIC mp_obj_t cbor_load_text(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_text(const byte ai, vstr_t *data_vstr)
 {
     LOAD_INT(ai, data_vstr);
     mp_obj_t val = mp_obj_new_str(data_vstr->buf, loaded_int);
@@ -159,7 +159,7 @@ STATIC mp_obj_t cbor_load_text(const byte ai, vstr_t *data_vstr)
     return val;
 }
 
-STATIC mp_obj_t cbor_load_list(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_list(const byte ai, vstr_t *data_vstr)
 {
     LOAD_INT(ai, data_vstr);
     mp_obj_t items = mp_obj_new_list(0, NULL);
@@ -171,7 +171,7 @@ STATIC mp_obj_t cbor_load_list(const byte ai, vstr_t *data_vstr)
     return items;
 }
 
-STATIC mp_obj_t cbor_load_dict(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_dict(const byte ai, vstr_t *data_vstr)
 {
     LOAD_INT(ai, data_vstr);
     mp_obj_t dict = mp_obj_new_dict(0);
@@ -184,13 +184,13 @@ STATIC mp_obj_t cbor_load_dict(const byte ai, vstr_t *data_vstr)
     return dict;
 }
 
-STATIC mp_obj_t cbor_unsupported_major_type(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_unsupported_major_type(const byte ai, vstr_t *data_vstr)
 {
     nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported major type: %d"), (ai >> 5)));
 }
 
 #if MICROPY_PY_BUILTINS_FLOAT
-STATIC mp_obj_t cbor_load_half_float(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_half_float(const byte ai, vstr_t *data_vstr)
 {
     if (data_vstr->len < sizeof(uint16_t))
     {
@@ -286,7 +286,7 @@ STATIC mp_obj_t cbor_load_half_float(const byte ai, vstr_t *data_vstr)
     return mp_obj_new_float((mp_float_t)fp_dp.f);
 }
 
-STATIC mp_obj_t cbor_load_float(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_float(const byte ai, vstr_t *data_vstr)
 {
     if (data_vstr->len < sizeof(uint32_t))
     {
@@ -311,7 +311,7 @@ STATIC mp_obj_t cbor_load_float(const byte ai, vstr_t *data_vstr)
     return mp_obj_new_float((mp_float_t)fp_sp.f);
 }
 
-STATIC mp_obj_t cbor_load_double(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_double(const byte ai, vstr_t *data_vstr)
 {
     if (data_vstr->len < sizeof(uint64_t))
     {
@@ -336,7 +336,7 @@ STATIC mp_obj_t cbor_load_double(const byte ai, vstr_t *data_vstr)
 }
 #endif
 
-STATIC mp_obj_t cbor_load_special(const byte ai, vstr_t *data_vstr)
+static mp_obj_t cbor_load_special(const byte ai, vstr_t *data_vstr)
 {
     switch (ai)
     {
@@ -393,7 +393,7 @@ STATIC mp_obj_t cbor_load_special(const byte ai, vstr_t *data_vstr)
     nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported additional information: %d"), ai));
 }
 
-STATIC mp_cbor_load_func_t load_functions_map[] = {
+static mp_cbor_load_func_t load_functions_map[] = {
     {0, cbor_load_int},
     {1, cbor_load_uint},
     {2, cbor_load_bytes},
@@ -404,7 +404,7 @@ STATIC mp_cbor_load_func_t load_functions_map[] = {
     {7, cbor_load_special},
 };
 
-STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
+static mp_obj_t cbor_loads(vstr_t *data_vstr)
 {
     byte fb = data_vstr->buf[0];
     vstr_cut_head_bytes(data_vstr, 1);
@@ -417,7 +417,7 @@ STATIC mp_obj_t cbor_loads(vstr_t *data_vstr)
     return load_functions_map[mt]._func(ai, data_vstr);
 }
 
-STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
+static mp_obj_t cbor_decode(mp_obj_t obj_data)
 {
     VSTR_INIT(data_vstr, 16);
     cbor_dump_buffer(obj_data, &data_vstr);
@@ -426,10 +426,10 @@ STATIC mp_obj_t cbor_decode(mp_obj_t obj_data)
     return val;
 }
 
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_decode_obj, cbor_decode);
+static MP_DEFINE_CONST_FUN_OBJ_1(cbor_decode_obj, cbor_decode);
 
 #if defined(MICROPY_PY_UCBOR_CANONICAL)
-STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
+static mp_obj_t cbor_sort_key(mp_obj_t entry)
 {
     mp_obj_tuple_t *entry_tuple = MP_OBJ_TO_PTR(entry);
     mp_obj_t key = entry_tuple->items[0];
@@ -439,10 +439,10 @@ STATIC mp_obj_t cbor_sort_key(mp_obj_t entry)
     return mp_obj_new_tuple(MP_ARRAY_SIZE(sort_tuple), sort_tuple);
 }
 
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
+static MP_DEFINE_CONST_FUN_OBJ_1(cbor_sort_key_obj, cbor_sort_key);
 #endif
 
-STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
+static void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
     if (MP_OBJ_IS_SMALL_INT(obj_data))
     {
@@ -504,13 +504,13 @@ STATIC void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, 
     }
 }
 
-STATIC void cbor_dump_int(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_int(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     cbor_dump_int_with_major_type(obj_data, data_vstr, 0);
 }
 
 #if MICROPY_PY_BUILTINS_FLOAT
-STATIC void cbor_dump_double_big(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_double_big(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     vstr_add_byte(data_vstr, (byte)0xfb);
     vstr_add_len(data_vstr, sizeof(uint64_t));
@@ -531,7 +531,7 @@ STATIC void cbor_dump_double_big(mp_obj_t obj_data, vstr_t *data_vstr)
     mp_binary_set_int(sizeof(uint32_t), 1, p + sizeof(uint32_t), fp_dp.i32[0]);
 }
 
-STATIC void cbor_dump_float_big(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_float_big(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     vstr_add_byte(data_vstr, (byte)0xfa);
     vstr_add_len(data_vstr, sizeof(uint32_t));
@@ -550,7 +550,7 @@ STATIC void cbor_dump_float_big(mp_obj_t obj_data, vstr_t *data_vstr)
     mp_binary_set_int(sizeof(uint32_t), 1, p, fp_sp.i32[0]);
 }
 
-STATIC void cbor_dump_float(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_float(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     union
     {
@@ -655,7 +655,7 @@ STATIC void cbor_dump_float(mp_obj_t obj_data, vstr_t *data_vstr)
 }
 #endif
 
-STATIC void cbor_dump_buffer_with_optional_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
+static void cbor_dump_buffer_with_optional_major_type(mp_obj_t obj_data, vstr_t *data_vstr, mp_int_t mt)
 {
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(obj_data, &bufinfo, MP_BUFFER_READ);
@@ -666,32 +666,32 @@ STATIC void cbor_dump_buffer_with_optional_major_type(mp_obj_t obj_data, vstr_t 
     vstr_add_strn(data_vstr, (const char *)bufinfo.buf, bufinfo.len);
 }
 
-STATIC void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_buffer(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     cbor_dump_buffer_with_optional_major_type(obj_data, data_vstr, -1);
 }
 
-STATIC void cbor_dump_bool(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_bool(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     vstr_add_byte(data_vstr, (byte)(mp_obj_is_true(obj_data) ? 0xf5 : 0xf4));
 }
 
-STATIC void cbor_dump_none(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_none(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     vstr_add_byte(data_vstr, (byte)0xf6);
 }
 
-STATIC void cbor_dump_bytes(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_bytes(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     cbor_dump_buffer_with_optional_major_type(obj_data, data_vstr, 2);
 }
 
-STATIC void cbor_dump_text(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_text(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     cbor_dump_buffer_with_optional_major_type(obj_data, data_vstr, 3);
 }
 
-STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     GET_ARRAY(obj_data);
     cbor_dump_int_with_major_type(mp_obj_new_int(array_len), data_vstr, 4);
@@ -702,7 +702,7 @@ STATIC void cbor_dump_list(mp_obj_t obj_data, vstr_t *data_vstr)
     }
 }
 
-STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
+static void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     mp_map_t *map = mp_obj_dict_get_map(obj_data);
     cbor_dump_int_with_major_type(mp_obj_new_int(map->used), data_vstr, 5);
@@ -740,7 +740,7 @@ STATIC void cbor_dump_dict(mp_obj_t obj_data, vstr_t *data_vstr)
 #endif
 }
 
-STATIC mp_cbor_dump_func_t dump_functions_map[] = {
+static mp_cbor_dump_func_t dump_functions_map[] = {
     {&mp_type_int, cbor_dump_int},
 #if MICROPY_PY_BUILTINS_FLOAT
     {&mp_type_float, cbor_dump_float},
@@ -756,7 +756,7 @@ STATIC mp_cbor_dump_func_t dump_functions_map[] = {
     {&mp_type_dict, cbor_dump_dict},
 };
 
-STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
+static mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
 {
     const mp_obj_type_t *obj_data_type = mp_obj_get_type(obj_data);
     bool need_temp_data_vstr = (data_vstr == NULL);
@@ -784,20 +784,20 @@ STATIC mp_obj_t cbor_dumps(mp_obj_t obj_data, vstr_t *data_vstr)
     nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Unsupported value: %s"), mp_obj_get_type_str(obj_data)));
 }
 
-STATIC mp_obj_t cbor_encode(mp_obj_t obj_data)
+static mp_obj_t cbor_encode(mp_obj_t obj_data)
 {
     return cbor_dumps(obj_data, NULL);
 }
 
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(cbor_encode_obj, cbor_encode);
+static MP_DEFINE_CONST_FUN_OBJ_1(cbor_encode_obj, cbor_encode);
 
-STATIC const mp_rom_map_elem_t mp_module_ucbor_globals_table[] = {
+static const mp_rom_map_elem_t mp_module_ucbor_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__cbor)},
     {MP_ROM_QSTR(MP_QSTR_decode), MP_ROM_PTR(&cbor_decode_obj)},
     {MP_ROM_QSTR(MP_QSTR_encode), MP_ROM_PTR(&cbor_encode_obj)},
 };
 
-STATIC MP_DEFINE_CONST_DICT(mp_module_ucbor_globals, mp_module_ucbor_globals_table);
+static MP_DEFINE_CONST_DICT(mp_module_ucbor_globals, mp_module_ucbor_globals_table);
 
 const mp_obj_module_t mp_module_ucbor = {
     .base = {&mp_type_module},
