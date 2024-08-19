@@ -495,7 +495,7 @@ static void cbor_dump_int_with_major_type(mp_obj_t obj_data, vstr_t *data_vstr, 
 
         vstr_add_byte(data_vstr, (byte)(mt | 27));
         vstr_add_len(data_vstr, size);
-        mpz_as_bytes(o_temp_p, 1, data_vstr->len - 1, (byte *)data_vstr->buf + 1);
+        mpz_as_bytes(o_temp_p, 1, 1, data_vstr->len - 1, (byte *)data_vstr->buf + 1);
 
         if (o_temp_p == &o_temp)
         {
